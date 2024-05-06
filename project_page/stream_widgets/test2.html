@@ -29,260 +29,26 @@
             <span>解码画面::</span>
             <video id="playVideo" autoplay muted class="video"></video>
         </div>
+        <iframe id="iframe" width="224" height="224" src="http://192.168.1.5/test4.html" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" sandbox="allow-scripts allow-popups allow-same-origin"></iframe>
     </div>
 
     <script type='text/javascript'>
-
-        let videoGenerator = new MediaStreamTrackGenerator('video');
-        let video_writer = videoGenerator.writable.getWriter();; // WritableStreamDefaultWriter
-        let processedStream = new MediaStream();
-        processedStream.addTrack(videoGenerator);
-        let playVideo = document.getElementById("playVideo");
-        let startBtn = document.getElementById("startBtn");
-        var decoder = null;
-        playVideo.srcObject = processedStream;
-
-        startBtn.addEventListener('click', () => {
-            socket.send("init");
-        });
-
-        // const Init = async () => {
-        //     // Create WebSocket connection.
-        //     const socket = new WebSocket("ws://192.168.1.46:8765");
-
-        //     const init = {
-        //         output: (frame) => {
-        //             if (videoWriter) {
-        //                 videoWriter.write(frame);
-        //                 console.log(frame);
-        //                 socket.send("next");
-        //             }
-        //         },
-        //         error: (error) => {
-        //             console.error('video decoder error:' + error);
-        //         }
-        //     };
-
-        //     const config = {
-        //         codec: "hev1.1.6.L93.B0",   // H256 main profile
-        //         // codec: "vp8",
-        //         codedWidth: 224,
-        //         codedHeight: 224,
-        //     };
-
-        //     const { supported } = await VideoDecoder.isConfigSupported(config);
-        //     if (supported) {
-        //         decoder = new VideoDecoder(init);
-        //         decoder.configure(config);
-        //     } else {
-        //         // Try another config.
-        //         alert('not support h265')
-        //     }
-
-
-        //     // Connection opened
-        //     socket.addEventListener("open", (event) => {
-        //         socket.send("init");
-        //     });
-
-        //     // Listen for messages
-        //     socket.addEventListener("message", (event) => {
-        //         event.data.arrayBuffer().then((value) => {
-        //             let data = new Uint8Array(value);
-        //             const temp = data[2] << 16 | data[1] << 8 | data[0];
-        //             // console.log(temp & 0x1, (temp>>1) & 0b111, (temp>>4) & 0b1, (temp>>5) & 0b1111111111111111111);
-        //             const chunk = new EncodedVideoChunk({
-        //                 timestamp: 0,//Date.now(),
-        //                 duration: 0,
-        //                 type: "key",//(temp&0x1) ? "delta" : "key",
-        //                 data: data,
-        //             });
-        //             chunk.data = data;
-        //             console.log(chunk);
-        //             try {
-        //                 decoder.decode(chunk)
-        //             } catch (error) {
-        //                 console.log(error);
-        //                 socket.send("next");
-        //             }
-        //         })
-
-        //         // socket.send("next")
-        //     });
-        // }
-
-        // Init();
-        const fetchTest = () => {
-            fetch("http://192.168.1.46:8765", {
-                method: "POST",
-                body: JSON.stringify({
-                    dummy: "N/A"
-                }),
-                headers: {
-                    "Content-type": "application/json; charset=UTF-8"
-                }
-            })
-                .then((response) => { return response.blob() })
-                .then((blob) => { console.log(blob) });
-        };
-
-        const host_url = "http://192.168.1.46:8765"
-
-
-        const fetchFrame = async (decoder) => {
-            try {
-                let response = await fetch("http://192.168.1.46:8765", {
-                    method: "POST",
-                    body: JSON.stringify({
-                        request: "frame"
-                    }),
-                    headers: {
-                        "Content-type": "application/json; charset=UTF-8"
-                    }
-                });
-                const data = await response.arrayBuffer();
-                // let data = new Uint8Array(blob_data);
-                // console.log(blob_data, data);
-                const chunk = new EncodedVideoChunk({
-                    timestamp: 0,
-                    duration: 0,
-                    type: "key",
-                    data: data,
-                });
-                chunk.data = data;
-                try {
-                    decoder.decode(chunk);
-                } catch (error) {
-                    console.log(error);
-                    fetchFrame(decoder);
-                }
-            } catch (err) {
-            }
-        }
-
-        const main = async () => {
-            var decoder = null;
-            // Fetch stream information
-            let response = await fetch(host_url, {
-                method: "POST",
-                body: JSON.stringify({
-                    request: "settings"
-                }),
-                headers: {
-                    "Content-type": "application/json; charset=UTF-8"
-                }
-            });
-            const stream_setting = await response.json();
-            let codec = null
-            switch (stream_setting['codec']) {
-                case "vp8":
-                    codec = "vp8";
-                    break;
-                case "h265":
-                    codec = "hev1.1.6.L93.B0";
-                    break;
-                default:
-                    alert("streaming supported codec");
-                    return;
-            }
-            const decode_config = {
-                codec: codec,
-                codedWidth: stream_setting['width'],
-                codedHeight: stream_setting['height']
-            }
-            const { supported } = await VideoDecoder.isConfigSupported(decode_config);
-            if (supported) {
-                decoder = new VideoDecoder({
-                    output: (frame) => {
-                        if (video_writer) {
-                            video_writer.write(frame);
-                            fetchFrame(decoder);
-                            frame.close();
-                        }
-                    },
-                    error: (error) => {
-                        console.error('video decoder error:' + error);
-                    }
-                });
-                decoder.configure(decode_config);
-            } else {
-                alert("browser don't support codec "+stream_setting['codec']);
-                return;
-            }
-            fetchFrame(decoder);
-        };
-
         // main();
         const communicate_test = (data) => {
             console.log(data);
         }
 
-        const codec = 'vp8';
-        let waitKeyFrame = true;
-        let videoEncoder = null;
-        let videoDecoder = null;
-        // let videoWriter = null; // WritableStreamDefaultWriter
-
-        const videoConstraints = {
-            width: 224,
-            height: 224
+        if (window.addEventListener) {
+            window.addEventListener("message", onMessage, false);        
+        } 
+        else if (window.attachEvent) {
+            window.attachEvent("onmessage", onMessage, false);
         }
 
-        startBtn.addEventListener('click', () => {
-            initVideoDecoder();
-            sendFrames = 0;
-            navigator.mediaDevices.getUserMedia({ video: videoConstraints }).then((stream) => {
-                localVideo.srcObject = stream;
-                let videoProcessor = new MediaStreamTrackProcessor(stream.getVideoTracks()[0]);
-                let videoGenerator = new MediaStreamTrackGenerator('video');
-                let videoTransformer = new TransformStream({
-                    transform: (frame, controller) => {
-                        const insert_keyframe = (sendFrames % 60) == 0;
-                        videoEncoder.encode(frame, { keyFrame: insert_keyframe });
-                        controller.enqueue(frame);
-                        sendFrames++;
-                    }
-                });
-                videoProcessor.readable.pipeThrough(videoTransformer).pipeTo(videoGenerator.writable);
-
-                // 此处需要显示videoGenerator，否则一段时间就会报错
-                let processedStream = new MediaStream();
-                processedStream.addTrack(videoGenerator);
-                encodeVideo.srcObject = processedStream;
-            }).catch((err) => {
-
-            })
-        })
-
-        function handleVideoEncoded(chunk) {
-            let data = new Uint8Array(chunk.byteLength);
-            chunk.copyTo(data.buffer);
-            chunk.data = data;
-
-            const encoded = new EncodedVideoChunk(chunk);
-            videoDecoder.decode(encoded);
+        function onMessage(event) {
+            console.log(event);
         }
-        function initVideoDecoder() {
-            videoDecoder = new VideoDecoder({
-                output: (frame) => {
-                    if (videoWriter) {
-                        videoWriter.write(frame);
-                    }
-                },
-                error: (error) => {
-                    console.error('video decoder error:' + error);
-                }
-            });
-            videoDecoder.configure({ codec: codec, width: videoConstraints.width, height: videoConstraints.height });
 
-            let videoGenerator = new MediaStreamTrackGenerator('video');
-            videoWriter = videoGenerator.writable.getWriter();
-            console.log("writer:", videoWriter);
-
-            let processedStream = new MediaStream();
-            processedStream.addTrack(videoGenerator);
-            playVideo.srcObject = processedStream;
-        }
     </script>
 </body>
 
