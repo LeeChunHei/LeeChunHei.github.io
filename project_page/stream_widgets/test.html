@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>
+  <title>WebCodecs Demo</title>
+</head>
+
+<body>
+  <style>
+    .item {
+      width: 320px;
+      display: inline-block;
+      text-align: center;
+    }
+
+    .video {
+      width: 224;
+      height: 224;
+    }
+  </style>
+  <h1>WebCodecs Demo</h1>
+  <br />
+  <button id="startBtn">开始</button>
+  <br />
+  <div>
+    <div class="item">
+      <span>解码画面::</span>
+      <video id="playVideo" autoplay muted class="video"></video>
+    </div>
+  </div>
+
+  <script type='text/javascript'>
+    
+    let videoGenerator = new MediaStreamTrackGenerator('video');
+    let videoWriter = videoGenerator.writable.getWriter();; // WritableStreamDefaultWriter
+    let processedStream = new MediaStream();
+    processedStream.addTrack(videoGenerator);
+    let playVideo = document.getElementById("playVideo");
+    let startBtn = document.getElementById("startBtn");
+    var decoder = null;
+    playVideo.srcObject = processedStream;
+
+    startBtn.addEventListener('click', () => {
+        socket.send("init");
+    });
+
+    const Init = async () => {
+        // Create WebSocket connection.
+        const socket = new WebSocket("ws://192.168.1.46:8765");
+
+        const init = {
+            output: (frame) => {
+                if (videoWriter) {
+                    videoWriter.write(frame);
+                    console.log(frame);
+                    socket.send("next");
+                }
+            },
+            error: (error) => {
+                console.error('video decoder error:' + error);
+            }
+        };
+
+        const config = {
+            codec: "hev1.1.6.L93.B0",   // H256 main profile
+            // codec: "vp8",
+            codedWidth: 224,
+            codedHeight: 224,
+        };
+
+        const { supported } = await VideoDecoder.isConfigSupported(config);
+        if (supported) {
+            decoder = new VideoDecoder(init);
+            decoder.configure(config);
+        } else {
+            // Try another config.
+            alert('not support h265')
+        }
+        
+
+        // Connection opened
+        socket.addEventListener("open", (event) => {
+            socket.send("init");
+        });
+
+        // Listen for messages
+        socket.addEventListener("message", (event) => {
+            event.data.arrayBuffer().then((value) => {
+                let data = new Uint8Array(value);
+                const temp = data[2]<<16|data[1]<<8|data[0];
+                // console.log(temp & 0x1, (temp>>1) & 0b111, (temp>>4) & 0b1, (temp>>5) & 0b1111111111111111111);
+                const chunk = new EncodedVideoChunk({
+                    timestamp: 0,//Date.now(),
+                    duration: 0,
+                    type: "key",//(temp&0x1) ? "delta" : "key",
+                    data: data,
+                });
+                chunk.data = data;
+                console.log(chunk);
+                try {
+                  decoder.decode(chunk)
+                } catch (error) {
+                  console.log(error);
+                  socket.send("next");
+                }
+            })
+
+            // socket.send("next")
+        });
+    }
+
+    Init();
+
+    const codec = 'vp8';
+    let waitKeyFrame = true;
+    let videoEncoder = null;
+    let videoDecoder = null;
+    // let videoWriter = null; // WritableStreamDefaultWriter
+
+    const videoConstraints = {
+      width: 224,
+      height: 224
+    }
+
+    startBtn.addEventListener('click', () => {
+      initVideoDecoder();
+      sendFrames = 0;
+      navigator.mediaDevices.getUserMedia({ video: videoConstraints }).then((stream) => {
+        localVideo.srcObject = stream;
+        let videoProcessor = new MediaStreamTrackProcessor(stream.getVideoTracks()[0]);
+        let videoGenerator = new MediaStreamTrackGenerator('video');
+        let videoTransformer = new TransformStream({
+          transform: (frame, controller) => {
+            const insert_keyframe = (sendFrames % 60) == 0;
+            videoEncoder.encode(frame, { keyFrame: insert_keyframe });
+            controller.enqueue(frame);
+            sendFrames++;
+          }
+        });
+        videoProcessor.readable.pipeThrough(videoTransformer).pipeTo(videoGenerator.writable);
+
+        // 此处需要显示videoGenerator，否则一段时间就会报错
+        let processedStream = new MediaStream();
+        processedStream.addTrack(videoGenerator);
+        encodeVideo.srcObject = processedStream;
+      }).catch((err) => {
+
+      })
+    })
+
+    function handleVideoEncoded(chunk) {
+      let data = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(data.buffer);
+      chunk.data = data;
+
+      const encoded = new EncodedVideoChunk(chunk);
+      videoDecoder.decode(encoded);
+    }
+    function initVideoDecoder() {
+      videoDecoder = new VideoDecoder({
+        output: (frame) => {
+          if (videoWriter) {
+            videoWriter.write(frame);
+          }
+        },
+        error: (error) => {
+          console.error('video decoder error:' + error);
+        }
+      });
+      videoDecoder.configure({ codec: codec, width: videoConstraints.width, height: videoConstraints.height });
+
+      let videoGenerator = new MediaStreamTrackGenerator('video');
+      videoWriter = videoGenerator.writable.getWriter();
+      console.log("writer:", videoWriter);
+
+      let processedStream = new MediaStream();
+      processedStream.addTrack(videoGenerator);
+      playVideo.srcObject = processedStream;
+    }
+  </script>
+</body>
+
+</html>
