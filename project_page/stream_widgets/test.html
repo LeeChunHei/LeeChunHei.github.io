@@ -47,7 +47,7 @@
 
     const Init = async () => {
         // Create WebSocket connection.
-        const socket = new WebSocket("ws://192.168.1.46:8765");
+        const socket = new WebSocket("wss://192.168.1.46:8765");
 
         const init = {
             output: (frame) => {
