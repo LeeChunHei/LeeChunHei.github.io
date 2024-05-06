@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>
+    <title>Stream Decode</title>
+</head>
+
+<body>
+    <style>
+        .item {
+            width: 320px;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .video {
+            width: 224;
+            height: 224;
+        }
+    </style>
+    <video id="stream_video" autoplay muted class="video"></video>
+
+    <script type='text/javascript'>
+        var decoder = null;
+        let video_generator = new MediaStreamTrackGenerator('video');
+        let video_writer = video_generator.writable.getWriter();
+        let processed_stream = new MediaStream();
+        processed_stream.addTrack(video_generator);
+        let stream_video = document.getElementById("stream_video");
+        stream_video.srcObject = processed_stream;
+
+        const fetchFrame = () => {
+            window.parent.postMessage({
+                'action': 'fetch_frame'
+            });
+        }
+
+        const decoderOutputCallback = (frame) => {
+            if (video_writer) {
+                video_writer.write(frame);
+                frame.close();
+                fetchFrame();
+            }
+        };
+
+        const decoderErrorCallback = (error) => {
+            console.error('video decoder error:' + error);
+        };
+
+        const initDecoder = async (codec, width, height) => {
+            let codec_config = null
+            switch (codec) {
+                case "vp8":
+                    codec_config = "vp8";
+                    break;
+                case "h265":
+                    codec_config = "hev1.1.6.L93.B0";
+                    break;
+                default:
+                    alert("streaming unsupported codec");
+                    return;
+            }
+            const decode_config = {
+                codec: codec_config,
+                codedWidth: width,
+                codedHeight: height
+            }
+            const { supported } = await VideoDecoder.isConfigSupported(decode_config);
+            if (supported) {
+                decoder = new VideoDecoder({
+                    output: decoderOutputCallback,
+                    error: decoderErrorCallback
+                });
+                decoder.configure(decode_config);
+            } else {
+                alert("browser don't support codec "+stream_setting['codec']);
+                return;
+            }
+        }
+
+        const decodeFrame = (encoded_data) => {
+            const chunk = new EncodedVideoChunk({
+                timestamp: 0,
+                duration: 0,
+                type: "key",
+                data: encoded_data,
+            });
+            chunk.data = encoded_data;
+            try {
+                decoder.decode(chunk);
+            } catch (error) {
+                console.log(error);
+                fetchFrame();
+            }
+        }
+
+        if (window.addEventListener) {
+            window.addEventListener("message", onMessage, false);        
+        } 
+        else if (window.attachEvent) {
+            window.attachEvent("onmessage", onMessage, false);
+        }
+        function onMessage(event) {
+            let data = event.data
+            switch (data.action) {
+                case "init":
+                    initDecoder(data.codec, data.width, data.height);
+                    break;
+                case "frame":
+                    decodeFrame(data.encoded_data);
+                default:
+                    break;
+            }
+            console.log(event);
+        }
+    </script>
+</body>
+
+</html>
