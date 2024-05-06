@@ -30,6 +30,10 @@
         let stream_video = document.getElementById("stream_video");
         stream_video.srcObject = processed_stream;
 
+        if (location.protocol !== 'https:') {
+            location.replace(`https:${location.href.substring(location.protocol.length)}`);
+        }
+
         const fetchFrame = () => {
             window.parent.postMessage({
                 'action': 'fetch_frame'
