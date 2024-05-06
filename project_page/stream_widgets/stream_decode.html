@@ -77,6 +77,7 @@
                 alert("browser don't support codec "+stream_setting['codec']);
                 return;
             }
+            fetchFrame();
         }
 
         const decodeFrame = (encoded_data) => {
