@@ -31,7 +31,7 @@
         stream_video.srcObject = processed_stream;
 
         if (location.protocol !== 'https:') {
-            location.replace(`https:${location.href.substring(location.protocol.length)}`);
+            console.log("loaded in"+location.protocol);
         }
 
         const fetchFrame = () => {
